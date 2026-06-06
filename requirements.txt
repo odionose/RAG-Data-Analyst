@@ -1,0 +1,24 @@
+# LLM + Agent (Gemini)
+langchain
+langchain-google-genai
+langchain-community
+langgraph
+google-generativeai
+instructor
+pydantic
+
+# Vector DB
+qdrant-client
+sentence-transformers
+
+# Data processing
+langchain-text-splitters
+pypdf
+
+# API + Server
+fastapi
+uvicorn
+
+# Utilities
+python-dotenv
+tqdm

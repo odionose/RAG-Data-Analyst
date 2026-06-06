@@ -1,0 +1,21 @@
+# Secrets
+.env
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Data 
+data/documents/
+data/extracted/
+data/cleaned/
+qdrant_storage/
+
+# Keep the DB schema, exclude file 
+data/*.db
+
+# Docker
+.dockerignore
