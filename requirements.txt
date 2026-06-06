@@ -22,3 +22,4 @@ uvicorn
 # Utilities
 python-dotenv
 tqdm
+numpy
