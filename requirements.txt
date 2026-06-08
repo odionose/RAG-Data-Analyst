@@ -11,6 +11,9 @@ pydantic
 qdrant-client
 sentence-transformers
 
+# Required for instructor structured outputs
+jsonref
+
 # Data processing
 langchain-text-splitters
 pypdf
