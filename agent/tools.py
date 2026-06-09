@@ -44,8 +44,8 @@ def execute_sql(query: str) -> str:
              operating_margin_pct (REAL)
 
     Use this for precise numerical lookups like:
-    - "What was Apple's revenue in 2023?"
-    - "Which company had the highest net income in 2022?"
+    - "What was Apple's revenue in 2025?"
+    - "Which company had the highest net income in 2025?"
     - "Compare R&D spending across companies"
     """
     max_retries = 3
@@ -112,8 +112,8 @@ def search_vector_db(user_query: str) -> str:
     Search the document vector database using semantic similarity.
     Use this for qualitative questions like:
     - "What are Apple's main risk factors?"
-    - "How does Microsoft describe its cloud strategy?"
-    - "What does Tesla say about competition in 2023?"
+    - "How does Amazon describe its cloud strategy?"
+    - "What does Google say about competition in 2025?"
 
     The tool automatically extracts company/year filters from your query.
     """
