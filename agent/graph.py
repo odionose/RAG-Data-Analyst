@@ -56,12 +56,13 @@ def agent_node(state: AgentState) -> AgentState:
     messages = [SystemMessage(content=SYSTEM_PROMPT)] + state["messages"]
     response = llm_with_tools.invoke(messages)
 
+
     # Track token costs from Gemini's response metadata
-    usage = getattr(response, "usage_metadata", None)
+    usage = response.usage_metadata
     if usage:
         state["cost_tracker"].record_loop(
-        input_tokens=getattr(usage, "input_tokens", 0) or getattr(usage, "prompt_token_count", 0),
-        output_tokens=getattr(usage, "output_tokens", 0) or getattr(usage, "candidates_token_count", 0),
+        input_tokens=usage["input_tokens"],
+        output_tokens=usage["output_tokens"],
     )
 
     return {"messages": [response]}
@@ -120,7 +121,7 @@ def run_agent(user_query: str) -> dict:
 
 
 if __name__ == "__main__":
-    result = run_agent("What was Apple's revenue in 2025, and what are their main risk factors?")
+    result = run_agent("What is Amazon's stance on cybersecurity?")
     print("\n" + "=" * 60)
     print("FINAL ANSWER:")
     print(result["answer"])
