@@ -42,4 +42,5 @@ class CostTracker:
             "total_cost_usd": round(self.total_cost, 6),
             "cost_per_loop_usd": round(self.total_cost / max(self.loop_count, 1), 6),
             "model": "gemini-2.5-flash-lite",
+            "tier": "gemini-2.5-flash-lite",
         }
