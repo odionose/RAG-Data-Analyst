@@ -1,0 +1,87 @@
+[
+  {
+    "query_id": 1,
+    "query": "What was Apple's total revenue in 2025?",
+    "answer": "Apple's total revenue in 2025 was $416.161 billion.",
+    "cost": {
+      "total_loops": 2,
+      "total_input_tokens": 938,
+      "total_output_tokens": 62,
+      "total_cost_usd": 0.000119,
+      "cost_per_loop_usd": 5.9e-05,
+      "model": "gemini-2.5-flash-lite",
+      "tier": "gemini-2.5-flash-lite"
+    },
+    "faithfulness": 1.0,
+    "answer_relevance": 1.0,
+    "notes": ""
+  },
+  {
+    "query_id": 2,
+    "query": "What are the main risk factors Amazon mentions in their 2025 filing?",
+    "answer": "The main risk factors mentioned by Amazon in their 2025 filing relate to cybersecurity, including data loss and other security incidents. The company's cybersecurity risks and mitigation strategies are overseen by senior leadership, the Audit Committee, the Board of Directors, and the Security Committee.",
+    "cost": {
+      "total_loops": 2,
+      "total_input_tokens": 1782,
+      "total_output_tokens": 91,
+      "total_cost_usd": 0.000215,
+      "cost_per_loop_usd": 0.000107,
+      "model": "gemini-2.5-flash-lite",
+      "tier": "gemini-2.5-flash-lite"
+    },
+    "faithfulness": 1.0,
+    "answer_relevance": 0.5,
+    "notes": ""
+  },
+  {
+    "query_id": 3,
+    "query": "Compare Apple and Google's net income in 2025. Which was more profitable?",
+    "answer": "In 2025, Google had a higher net income ($132.17 billion) compared to Apple ($112.01 billion). Therefore, Google was more profitable in 2025.",
+    "cost": {
+      "total_loops": 2,
+      "total_input_tokens": 983,
+      "total_output_tokens": 99,
+      "total_cost_usd": 0.000138,
+      "cost_per_loop_usd": 6.9e-05,
+      "model": "gemini-2.5-flash-lite",
+      "tier": "gemini-2.5-flash-lite"
+    },
+    "faithfulness": 1.0,
+    "answer_relevance": 1.0,
+    "notes": ""
+  },
+  {
+    "query_id": 4,
+    "query": "How does Amazon describe its cloud computing strategy in 2025?",
+    "answer": "Amazon's cloud computing strategy in 2025 involves investing in AWS to offer a wide range of on-demand technology services, including compute, storage, database, analytics, and machine learning. They are also focused on building and deploying innovative software and electronic devices, developing a satellite network for global broadband, and advancing autonomous vehicle technology. This strategy is driven by the belief that technological advancements in processing power, data storage, analytics, wireless connectivity, and AI/machine learning will continue to enhance user experiences and the pervasiveness of technology. (Amazon, 2025)",
+    "cost": {
+      "total_loops": 3,
+      "total_input_tokens": 4044,
+      "total_output_tokens": 182,
+      "total_cost_usd": 0.000477,
+      "cost_per_loop_usd": 0.000159,
+      "model": "gemini-2.5-flash-lite",
+      "tier": "gemini-2.5-flash-lite"
+    },
+    "faithfulness": 1.0,
+    "answer_relevance": 1.0,
+    "notes": ""
+  },
+  {
+    "query_id": 5,
+    "query": "Which of the 4 companies had the highest R&D spending as a percentage of revenue in 2025?",
+    "answer": "I need to know which 4 companies you are referring to. Could you please list them?",
+    "cost": {
+      "total_loops": 1,
+      "total_input_tokens": 445,
+      "total_output_tokens": 19,
+      "total_cost_usd": 5.2e-05,
+      "cost_per_loop_usd": 5.2e-05,
+      "model": "gemini-2.5-flash-lite",
+      "tier": "gemini-2.5-flash-lite"
+    },
+    "faithfulness": 0.0,
+    "answer_relevance": 0.0,
+    "notes": ""
+  }
+]

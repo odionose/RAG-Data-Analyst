@@ -8,6 +8,7 @@ from google import genai as google_genai
 from pydantic import BaseModel, Field
 from langchain.tools import tool
 from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 from sentence_transformers import SentenceTransformer
 
@@ -155,13 +156,29 @@ def search_vector_db(user_query: str) -> str:
     query_vector = _embed_model.encode(params.query_text).tolist()
 
     # Step 4: Search with both semantic + metadata filtering
-    results = _qdrant_client.query_points(
-        collection_name=_collection,
-        query=query_vector,
-        query_filter=qdrant_filter,
-        limit=params.top_k,
-        with_payload=True,
-    )
+    try:
+        results = _qdrant_client.query_points(
+            collection_name=_collection,
+            query=query_vector,
+            query_filter=qdrant_filter,
+            limit=params.top_k,
+            with_payload=True,
+        )
+    except UnexpectedResponse as e:
+        # Qdrant may reject filtered queries if the required payload index
+        # is missing or not yet available. Fall back to an unfiltered
+        # semantic search to avoid crashing the agent evaluation.
+        msg = str(e)
+        if 'Index required' in msg or 'Index required but not found' in msg:
+            # Retry without metadata filter
+            results = _qdrant_client.query_points(
+                collection_name=_collection,
+                query=query_vector,
+                limit=params.top_k,
+                with_payload=True,
+            )
+        else:
+            raise
 
     if not results or not getattr(results, 'points', None):
         return (

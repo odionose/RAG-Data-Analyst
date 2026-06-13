@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.http.models.models import KeywordIndexParams, IntegerIndexParams
 
 try:
     from etl.chunker import semantic_chunk, extract_metadata_from_filename
@@ -35,6 +36,29 @@ def create_collection(client: QdrantClient):
         print(f"Created collection: {COLLECTION_NAME}")
     else:
         print(f"Collection '{COLLECTION_NAME}' already exists.")
+    # Ensure payload indexes exist for metadata filters used by the agent
+    try:
+        client.create_payload_index(
+            collection_name=COLLECTION_NAME,
+            field_name="company_name",
+            field_schema=KeywordIndexParams(),
+            wait=True,
+        )
+        print("Ensured payload index: company_name (keyword)")
+    except Exception:
+        # ignore if index already exists or Qdrant reports non-fatal error
+        pass
+
+    try:
+        client.create_payload_index(
+            collection_name=COLLECTION_NAME,
+            field_name="document_year",
+            field_schema=IntegerIndexParams(),
+            wait=True,
+        )
+        print("Ensured payload index: document_year (integer)")
+    except Exception:
+        pass
 
 def embed_and_insert(chunks: list[dict], model: SentenceTransformer, client: QdrantClient):
     if not chunks:
