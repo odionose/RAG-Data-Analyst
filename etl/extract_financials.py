@@ -1,164 +1,273 @@
+import argparse
+import json
 import os
 import re
-import json
 import sqlite3
 from pathlib import Path
-from urllib import response
+from typing import Any
+
 from dotenv import load_dotenv
-from pypdf import PdfReader
 from google import genai
+from pypdf import PdfReader
 
 load_dotenv()
 
-client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
-
 DB_PATH = os.getenv("SQLITE_DB_PATH", "data/financials.db")
+API_KEY = os.getenv("GOOGLE_API_KEY")
+CLIENT = genai.Client(api_key=API_KEY) if API_KEY else None
+
+SECTION_MARKERS = [
+    "income statements",
+    "consolidated statements of operations",
+    "consolidated statements of income",
+    "consolidated statements of earnings",
+    "consolidated balance sheet",
+    "financial statements and supplementary data",
+    "item 8",
+]
+
+NUMERIC_FIELDS = {
+    "revenue_billions": [
+        "total revenue", "net sales", "revenues", "total net sales",
+        "net sales and revenue",
+    ],
+    "net_income_billions": [
+        "net income", "net loss", "net earnings", "net loss attributable",
+    ],
+    "total_assets_billions": [
+        "total assets", "assets total", "total consolidated assets",
+    ],
+    "rd_expense_billions": [
+        "research and development", "research & development", "rd expense", "r&d",
+    ],
+    "employees_thousands": [
+        "employees", "number of employees", "total employees",
+    ],
+}
+
+INFER_FIELDS = [
+    "revenue_billions",
+    "net_income_billions",
+    "total_assets_billions",
+    "employees_thousands",
+    "rd_expense_billions",
+    "operating_margin_pct",
+]
 
 
 def extract_text_from_pdf(pdf_path: Path) -> str:
-    """Extract raw text from PDF."""
     reader = PdfReader(str(pdf_path))
-    return "\n\n".join(
-        page.extract_text() for page in reader.pages if page.extract_text()
-    )
+    return "\n".join(page.extract_text() or "" for page in reader.pages)
 
 
 def find_financial_section(text: str) -> str:
-  
-    markers = [
-        "income statements",                              # catches Microsoft's index header
-        "consolidated statements of operations",
-        "consolidated statements of income",
-        "consolidated statements of earnings",
-        "consolidated balance sheet",
-        "financial statements and supplementary data",
-        "item 8",
-    ]
-
     text_lower = text.lower()
     best_idx = -1
-
-    for marker in markers:
-        # Find ALL occurrences of this marker
-        start = 0
-        while True:
-            idx = text_lower.find(marker, start)
-            if idx == -1:
-                break
-            # Skip TOC hits — real financial sections are never in the first 10% of the doc
-            if idx > len(text) * 0.10:
-                best_idx = max(best_idx, idx)
-            start = idx + 1
-
+    for marker in SECTION_MARKERS:
+        idx = text_lower.find(marker)
+        if idx != -1 and idx > best_idx:
+            best_idx = idx
     if best_idx != -1:
-        print(f"  Financial section found at position {best_idx} "
-              f"({round(best_idx/len(text)*100)}% into document)")
+        print(f"  Financial section found at position {best_idx} ({round(best_idx / len(text) * 100)}% into document)")
         return text[best_idx:best_idx + 40000]
 
-    # Fallback: last 40% of the document
     print("  No marker found — using fallback (last 40%)")
     start = int(len(text) * 0.6)
     return text[start:start + 40000]
-def extract_financials_with_gemini(text: str, company: str, year: int) -> dict | None:
-    """
-    Send the financial section to Gemini and parse the JSON response.
-    Returns a dict with all fields, or None if parsing fails.
-    """
-    financial_text = find_financial_section(text)
 
-    # TEMPORARY: print what's being sent to Gemini
-    print(f"\n  --- SECTION PREVIEW (first 1000 chars) ---")
-    print(financial_text[:1000])
-    print(f"  --- END PREVIEW ---\n")
 
+def parse_number(token: str) -> float | None:
+    if not token:
+        return None
+    token = token.replace(',', '').replace('$', '').strip()
+    negative = token.startswith('(') and token.endswith(')')
+    if negative:
+        token = token[1:-1]
+    try:
+        return -float(token) if negative else float(token)
+    except ValueError:
+        return None
+
+
+def scale_number(field: str, value: float | None, context: str | None = None) -> float | None:
+    if value is None:
+        return None
+    ctx = (context or '').lower()
+    if field == "employees_thousands":
+        if abs(value) > 1000:
+            return value / 1000.0
+        return value
+    if "thousand" in ctx:
+        return value / 1_000_000.0
+    if "million" in ctx:
+        return value / 1000.0
+    if "billion" in ctx:
+        return value
+    if abs(value) >= 1_000_000_000:
+        return value / 1_000_000_000.0
+    if abs(value) > 1000:
+        return value / 1000.0
+    return value
+
+
+def find_year_header(lines: list[str], target_year: int) -> tuple[int | None, int | None]:
+    for i, line in enumerate(lines[:80]):
+        cols = re.split(r"\s{2,}", line.strip())
+        if any(str(target_year) in col for col in cols):
+            for j, col in enumerate(cols):
+                if str(target_year) in col:
+                    return i, j
+    return None, None
+
+
+def extract_from_table(section: str, target_year: int) -> dict[str, float | None]:
+    lines = [line for line in section.splitlines() if line.strip()]
+    header_idx, year_col = find_year_header(lines, target_year)
+    result: dict[str, float | None] = {k: None for k in NUMERIC_FIELDS}
+
+    if header_idx is not None:
+        for line in lines[header_idx + 1: header_idx + 250]:
+            cols = re.split(r"\s{2,}", line.strip())
+            if len(cols) < 2:
+                continue
+            label = cols[0].lower()
+            for field, patterns in NUMERIC_FIELDS.items():
+                if any(pattern in label for pattern in patterns):
+                    target_token = None
+                    if year_col is not None and year_col < len(cols):
+                        target_token = cols[year_col]
+                    else:
+                        for candidate in cols[1:]:
+                            if re.search(r"[0-9()\.,]+", candidate):
+                                target_token = candidate
+                                break
+                    if not target_token:
+                        continue
+                    value = parse_number(re.sub(r"[^0-9().,\-]", '', target_token))
+                    result[field] = scale_number(field, value, ' '.join(cols))
+    return result
+
+
+def extract_from_labels(section: str) -> dict[str, float | None]:
+    result: dict[str, float | None] = {k: None for k in NUMERIC_FIELDS}
+    for field, patterns in NUMERIC_FIELDS.items():
+        for pattern in patterns:
+            regex = re.compile(
+                rf"{re.escape(pattern)}[\s\S]{{0,180}}?([\d,\(\)\.]+)(?:[^\d\n\r]{{0,80}}(million|billion|thousand))?",
+                re.IGNORECASE,
+            )
+            match = regex.search(section)
+            if match:
+                raw_value = parse_number(match.group(1))
+                context = match.group(0)
+                result[field] = scale_number(field, raw_value, context)
+                break
+    return result
+
+
+def local_extract_financials(text: str, company: str, year: int) -> dict[str, Any]:
+    section = find_financial_section(text)
+    table_data = extract_from_table(section, year)
+    label_data = extract_from_labels(section)
+    merged = {k: table_data.get(k) if table_data.get(k) is not None else label_data.get(k) for k in NUMERIC_FIELDS}
+    merged["company_name"] = company
+    merged["year"] = year
+    merged["operating_margin_pct"] = None
+    return merged
+
+
+def extract_financials_with_gemini(text: str, company: str, year: int) -> dict[str, Any] | None:
+    if not CLIENT:
+        return None
+    section = find_financial_section(text)
     prompt = f"""
 You are a financial data extractor. From the 10-K filing text below for {company} ({year}),
-extract ONLY these specific figures. Return ONLY valid JSON, no explanation, no markdown.
-
-Required fields:
-- revenue_billions: Total revenue/net sales in billions USD (divide millions by 1000)
-- net_income_billions: Net income in billions USD
-- total_assets_billions: Total assets in billions USD
-- employees_thousands: Total employees in thousands (divide by 1000)
-- rd_expense_billions: Research and development expense in billions USD
-- operating_margin_pct: Operating income / Revenue * 100 (as a percentage)
-
+extract ONLY valid JSON with these fields:
+- revenue_billions
+- net_income_billions
+- total_assets_billions
+- employees_thousands
+- rd_expense_billions
+- operating_margin_pct
 If a figure cannot be found, use null.
 
 Filing text:
-{financial_text}
-
-Return JSON only:
+{section}
 """
-
-    response = client.models.generate_content(
-    model="gemini-2.5-flash-lite", # review
-    contents=prompt,
+    response = CLIENT.models.generate_content(
+        model="gemini-2.5-flash-lite",
+        contents=prompt,
     )
     raw = response.text.strip()
     raw = re.sub(r'```json\s*', '', raw)
     raw = re.sub(r'```\s*', '', raw)
     raw = raw.strip()
-
     try:
         data = json.loads(raw)
         data["company_name"] = company
         data["year"] = year
         return data
-    except json.JSONDecodeError as e:
-        print(f"  WARNING: Could not parse JSON for {company} {year}: {e}")
-        print(f"  Raw response: {raw[:200]}")
+    except json.JSONDecodeError:
         return None
 
 
-def create_table(cursor: sqlite3.Cursor):
-    """
-    Create the table if it doesn't exist.
-    Remove legacy duplicates and enforce a unique index on company/year.
-    """
+def create_table(cursor: sqlite3.Cursor) -> None:
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS company_financials (
-        id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-        company_name         TEXT    NOT NULL,
-        year                 INTEGER NOT NULL,
-        revenue_billions     REAL,
-        net_income_billions  REAL,
-        total_assets_billions REAL,
-        employees_thousands  REAL,
-        rd_expense_billions  REAL,
-        operating_margin_pct REAL
+        CREATE TABLE IF NOT EXISTS company_financials (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_name TEXT NOT NULL,
+            year INTEGER NOT NULL,
+            revenue_billions REAL,
+            net_income_billions REAL,
+            total_assets_billions REAL,
+            employees_thousands REAL,
+            rd_expense_billions REAL,
+            operating_margin_pct REAL
+        )
+    """)
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_company_year
+        ON company_financials(company_name, year)
+    """)
+
+
+def insert_or_update(cursor: sqlite3.Cursor, data: dict[str, Any]) -> None:
+    cursor.execute("""
+        INSERT OR REPLACE INTO company_financials
+            (company_name, year, revenue_billions, net_income_billions,
+             total_assets_billions, employees_thousands, rd_expense_billions,
+             operating_margin_pct)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        data["company_name"],
+        data["year"],
+        data.get("revenue_billions"),
+        data.get("net_income_billions"),
+        data.get("total_assets_billions"),
+        data.get("employees_thousands"),
+        data.get("rd_expense_billions"),
+        data.get("operating_margin_pct"),
+    ))
+
+
+def summarize(data: dict[str, Any]) -> str:
+    return (
+        f"revenue={data.get('revenue_billions')}B | "
+        f"net_income={data.get('net_income_billions')}B | "
+        f"employees={data.get('employees_thousands')}k | "
+        f"assets={data.get('total_assets_billions')}B | "
+        f"rd={data.get('rd_expense_billions')}B"
     )
-    """)
-
-    cursor.execute("""
-    DELETE FROM company_financials
-    WHERE id NOT IN (
-        SELECT MIN(id)
-        FROM company_financials
-        GROUP BY company_name, year
-    )
-    """)
-
-    cursor.execute("""
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_company_year
-    ON company_financials(company_name, year)
-    """)
 
 
-def populate_database(pdf_dir: str = "data/documents", pdf_filter: str = None):
-
+def populate_database(pdf_dir: str = "data/documents", pdf_filter: str | None = None, local_only: bool = False) -> None:
     pdf_files = sorted(Path(pdf_dir).glob("*.pdf"))
-
-    # Apply optional filter (e.g. python extract_financials.py apple)
     if pdf_filter:
-        pdf_files = [f for f in pdf_files if pdf_filter.lower() in f.name.lower()]
-
+        pdf_files = [path for path in pdf_files if pdf_filter.lower() in path.name.lower()]
     if not pdf_files:
         print(f"No PDFs found in '{pdf_dir}'.")
-        print("Make sure your files are named COMPANY_YEAR.pdf (e.g. apple_2025.pdf)")
         return
 
-    os.makedirs("data", exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     create_table(cursor)
@@ -169,53 +278,38 @@ def populate_database(pdf_dir: str = "data/documents", pdf_filter: str = None):
     inserted = 0
     skipped = 0
 
-    for pdf_path in pdf_files:
-        # Parse company name and year from filename: apple_2025.pdf → Apple, 2025
+    for index, pdf_path in enumerate(pdf_files, start=1):
         parts = pdf_path.stem.split("_")
         company = " ".join(parts[:-1]).title()
         year = int(parts[-1])
 
-        print(f"\n[{pdf_files.index(pdf_path) + 1}/{len(pdf_files)}] {company} {year}")
+        print(f"\n[{index}/{len(pdf_files)}] {company} {year}")
         text = extract_text_from_pdf(pdf_path)
-        data = extract_financials_with_gemini(text, company, year)
+        result = None
 
-        if data:
-            # Check if Gemini returned all nulls — means it couldn't find anything
-            values = [data.get(k) for k in [
-             "revenue_billions", "net_income_billions", "total_assets_billions",
-             "employees_thousands", "rd_expense_billions", "operating_margin_pct"
-            ]]
-            if all(v is None for v in values):
-                print(f"  ✗ SKIPPED — all fields returned null, financial section not found")
-                skipped += 1
-                continue
-            cursor.execute("""
-                INSERT OR REPLACE INTO company_financials
-                    (company_name, year, revenue_billions, net_income_billions,
-                     total_assets_billions, employees_thousands,
-                     rd_expense_billions, operating_margin_pct)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                data["company_name"],
-                data["year"],
-                data.get("revenue_billions"),
-                data.get("net_income_billions"),
-                data.get("total_assets_billions"),
-                data.get("employees_thousands"),
-                data.get("rd_expense_billions"),
-                data.get("operating_margin_pct"),
-            ))
+        if not local_only and CLIENT:
+            result = extract_financials_with_gemini(text, company, year)
+            if result:
+                metrics = [result.get(k) for k in INFER_FIELDS]
+                if all(v is None for v in metrics):
+                    result = None
+                else:
+                    print("  Gemini extraction succeeded")
+
+        if result is None:
+            print("  Falling back to local extraction")
+            result = local_extract_financials(text, company, year)
+
+        if result:
+            insert_or_update(cursor, result)
             inserted += 1
-            print(f"  ✓ revenue={data.get('revenue_billions')}B | "
-                  f"net_income={data.get('net_income_billions')}B | "
-                  f"employees={data.get('employees_thousands')}k")
+            print("  ✓", summarize(result))
         else:
             skipped += 1
-            print(f"  ✗ SKIPPED — extraction failed")
+            print("  ✗ Skipped — no data extracted")
 
     conn.commit()
 
-    # Summary — shows only the rows for THIS run, not all historical rows
     print(f"\n{'=' * 60}")
     print(f"Run complete: {inserted} inserted/updated, {skipped} skipped")
     print(f"\nCurrent database contents ({DB_PATH}):")
@@ -225,14 +319,16 @@ def populate_database(pdf_dir: str = "data/documents", pdf_filter: str = None):
         ORDER BY company_name, year
     """)
     for row in cursor.fetchall():
-        print(f"  {row[0]:<12} {row[1]}  revenue=${row[2]}B  net_income=${row[3]}B")
-
+        print(f"  {row[0]:<12} {row[1]}  revenue={row[2]}B  net_income={row[3]}B")
     conn.close()
 
 
 if __name__ == "__main__":
-    import sys
-    # Run all PDFs:         python etl/extract_financials.py
-    # Run one company:      python etl/extract_financials.py apple
-    pdf_filter = sys.argv[1] if len(sys.argv) > 1 else None
-    populate_database(pdf_filter=pdf_filter)
+    parser = argparse.ArgumentParser(description="Extract financial metrics from 10-K PDFs.")
+    parser.add_argument("filter", nargs="?", help="Optional PDF name filter")
+    parser.add_argument("--filter", dest="filter", help="Optional PDF name filter")
+    parser.add_argument("--local-only", action="store_true", help="Use only local extraction heuristics")
+    parser.add_argument("--pdf-dir", default="data/documents", help="Directory containing PDF files")
+    args = parser.parse_args()
+
+    populate_database(pdf_dir=args.pdf_dir, pdf_filter=args.filter, local_only=args.local_only)

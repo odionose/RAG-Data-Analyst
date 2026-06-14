@@ -79,3 +79,6 @@ It requires an agent that can dynamically write SQL to calculate the revenue, an
 	uvicorn app.main:app --host 0.0.0.0 --port 8080
 
  - Open http://localhost:8080/docs to try the `/query` endpoint.
+
+ see [REPORT.md](/REPORT.md) for the system architecture diagram, RAGAS Evaluation and Cost Analysis
+ 
