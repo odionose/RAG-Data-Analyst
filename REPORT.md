@@ -42,3 +42,72 @@ Tools node — LangGraph's built-in ToolNode receives the tool call and dispatch
 The dashed line in the diagram represents this loop — a single query might pass through the agent node 2–4 times depending on how many tools it needs to call.
 
 See the [results.json](/eval/results.json) for the RAGAS Evaluation.
+
+
+## RAGAS Evaluation Report
+
+This evaluation is based on the RAGAS Evaluations results in [results.json](/eval/results.json)
+
+| Metric           | Meaning                                                             |
+| ---------------- | ------------------------------------------------------------------- |
+| Faithfulness     | Whether the answer is grounded in the retrieved/contextual evidence |
+| Answer Relevance | Whether the answer directly addresses the user’s query              |
+
+| Metric                   |    Score |
+| ------------------------ | -------: |
+| Average Faithfulness     | **0.80** |
+| Average Answer Relevance | **0.70** |
+| Combined Average Score   | **0.75** |
+
+
+### Per-Query RAGAS Evaluation
+
+| Query ID | Query                                                                                     | Faithfulness | Answer Relevance | Evaluation              |
+| -------: | ----------------------------------------------------------------------------------------- | -----------: | ---------------: | ----------------------- |
+|        1 | What was Apple's total revenue in 2025?                                                   |          1.0 |              1.0 | Excellent               |
+|        2 | What are the main risk factors Amazon mentions in their 2025 filing?                      |          1.0 |              0.5 | Faithful but incomplete |
+|        3 | Compare Apple and Google's net income in 2025. Which was more profitable?                 |          1.0 |              1.0 | Excellent               |
+|        4 | How does Amazon describe its cloud computing strategy in 2025?                            |          1.0 |              1.0 | Excellent               |
+|        5 | Which of the 4 companies had the highest R&D spending as a percentage of revenue in 2025? |          0.0 |              0.0 | Failed                  |
+
+
+## Cost Analysis
+
+This is based on the cost of the RAGAS Evaluations results in [results.json](/eval/results.json)
+
+Assumption: 1 GCP credit = $1.00 USD equivalent.
+
+### Summary
+
+| Metric                         |                Value |
+| ------------------------------ | -------------------: |
+| Total queries evaluated        |                    5 |
+| Total loops                    |                   10 |
+| Total GCP credits consumed     | **0.001001 credits** |
+| Total cost                     |        **$0.001001** |
+| Average cost per query         |       **$0.0002002** |
+| Estimated cost per 100 queries |         **$0.02002** |
+
+### Per-Query Cost Breakdown
+
+| Query ID | Total Loops |  Cost USD | GCP Credits Consumed | Share of Total Cost | Cost per 100 Similar Queries |
+| -------: | ----------: | --------: | -------------------: | ------------------: | ---------------------------: |
+|        1 |           2 | $0.000119 |             0.000119 |              11.89% |                      $0.0119 |
+|        2 |           2 | $0.000215 |             0.000215 |              21.48% |                      $0.0215 |
+|        3 |           2 | $0.000138 |             0.000138 |              13.79% |                      $0.0138 |
+|        4 |           3 | $0.000477 |             0.000477 |              47.65% |                      $0.0477 |
+|        5 |           1 | $0.000052 |             0.000052 |               5.19% |                      $0.0052 |
+
+### Formula Used
+
+Total cost = sum(total_cost_usd)
+           = 0.000119 + 0.000215 + 0.000138 + 0.000477 + 0.000052
+           = $0.001001
+
+Average cost per query = total cost / number of queries
+                       = 0.001001 / 5
+                       = $0.0002002
+
+Cost per 100 queries = average cost per query × 100
+                     = 0.0002002 × 100
+                     = $0.02002

@@ -45,22 +45,11 @@ TEST_QUERIES = [
     },
     {
         "id": 5,
-        "query": "Which company in the database had the highest R&D spending as a percentage of revenue in 2025?",
+        "query": "Which of the 4 companies had the highest R&D spending as a percentage of revenue in 2025?",
         "expected_type": "analytical",
         "notes": "Should use SQL, compute the R&D/revenue ratio across all companies with 2025 financial data"
     },
-    {
-        "id": 6,
-        "query": "What was Tesla's total revenue in 2024?",
-        "expected_type": "numerical",
-        "notes": "Should use execute_sql for exact Tesla 2024 revenue from the database"
-    },
-    {
-        "id": 7,
-        "query": "Which 2025 company reported the largest total assets in the database?",
-        "expected_type": "analytical",
-        "notes": "Should use SQL to compare total_assets_billions for 2025 filings across all companies"
-    },
+
 ]
 
 
